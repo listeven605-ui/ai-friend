@@ -41,7 +41,7 @@ body {
 .avatar {
   width: 40px;
   height: 40px;
-  border-radius: 5px;
+  border-radius: 8px;
 }
 
 /* 气泡 */
@@ -51,6 +51,7 @@ body {
   border-radius: 10px;
   margin: 0 10px;
   word-break: break-word;
+  font-size: 14px;
 }
 
 .ai {
@@ -73,6 +74,7 @@ input {
   padding: 10px;
   border-radius: 20px;
   border: 1px solid #ccc;
+  outline: none;
 }
 
 button {
@@ -82,6 +84,7 @@ button {
   background: #07c160;
   color: white;
   border-radius: 5px;
+  cursor: pointer;
 }
 </style>
 </head>
@@ -100,15 +103,20 @@ button {
 <script>
 const chat = document.getElementById("chat")
 
+// ==========================
+// ⭐ 在这里改头像（重点）
+// ==========================
+const USER_AVATAR = "/avatar.user.jpeg"
+const AI_AVATAR = "/avatar.ai.jpeg"
+// ==========================
+
 function addMessage(text, isUser) {
   const row = document.createElement("div")
   row.className = "row " + (isUser ? "right" : "left")
 
   const avatar = document.createElement("img")
   avatar.className = "avatar"
-  avatar.src = isUser
-    ? "https://i.imgur.com/6VBx3io.png"
-    : "https://i.imgur.com/8Km9tLL.png"
+  avatar.src = isUser ? USER_AVATAR : AI_AVATAR
 
   const bubble = document.createElement("div")
   bubble.className = "bubble " + (isUser ? "user" : "ai")
@@ -128,25 +136,30 @@ function addMessage(text, isUser) {
 
 async function send() {
   const input = document.getElementById("input")
-  const text = input.value
+  const text = input.value.trim()
   if (!text) return
 
   addMessage(text, true)
   input.value = ""
 
-  const res = await fetch("/chat", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      userId: "me",
-      message: text
+  try {
+    const res = await fetch("/chat", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        userId: "me",
+        message: text
+      })
     })
-  })
 
-  const data = await res.json()
-  addMessage(data.reply, false)
+    const data = await res.json()
+    addMessage(data.reply, false)
+
+  } catch (err) {
+    addMessage("网络好像有点问题...", false)
+  }
 }
 
 // 回车发送
