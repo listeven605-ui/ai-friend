@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>AI Chat</title>
+
+<style>
+body {
+  margin: 0;
+  font-family: Arial;
+  background: #ededed;
+}
+
+/* 顶部 */
+.header {
+  background: #07c160;
+  color: white;
+  padding: 15px;
+  text-align: center;
+  font-weight: bold;
+}
+
+/* 聊天区 */
+.chat {
+  padding: 10px;
+  height: calc(100vh - 120px);
+  overflow-y: auto;
+}
+
+/* 消息行 */
+.row {
+  display: flex;
+  margin: 10px;
+}
+
+/* 左右 */
+.left { justify-content: flex-start; }
+.right { justify-content: flex-end; }
+
+/* 头像 */
+.avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 5px;
+}
+
+/* 气泡 */
+.bubble {
+  max-width: 60%;
+  padding: 10px;
+  border-radius: 10px;
+  margin: 0 10px;
+  word-break: break-word;
+}
+
+.ai {
+  background: white;
+}
+
+.user {
+  background: #95ec69;
+}
+
+/* 输入区 */
+.input-area {
+  display: flex;
+  padding: 10px;
+  background: #f7f7f7;
+}
+
+input {
+  flex: 1;
+  padding: 10px;
+  border-radius: 20px;
+  border: 1px solid #ccc;
+}
+
+button {
+  margin-left: 10px;
+  padding: 10px 15px;
+  border: none;
+  background: #07c160;
+  color: white;
+  border-radius: 5px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="header">若兰</div>
+
+<div id="chat" class="chat"></div>
+
+<div class="input-area">
+  <input id="input" placeholder="发消息..." />
+  <button onclick="send()">发送</button>
+</div>
+
+<script>
+const chat = document.getElementById("chat")
+
+function addMessage(text, isUser) {
+  const row = document.createElement("div")
+  row.className = "row " + (isUser ? "right" : "left")
+
+  const avatar = document.createElement("img")
+  avatar.className = "avatar"
+  avatar.src = isUser
+    ? "https://i.imgur.com/6VBx3io.png"
+    : "https://i.imgur.com/8Km9tLL.png"
+
+  const bubble = document.createElement("div")
+  bubble.className = "bubble " + (isUser ? "user" : "ai")
+  bubble.innerText = text
+
+  if (isUser) {
+    row.appendChild(bubble)
+    row.appendChild(avatar)
+  } else {
+    row.appendChild(avatar)
+    row.appendChild(bubble)
+  }
+
+  chat.appendChild(row)
+  chat.scrollTop = chat.scrollHeight
+}
+
+async function send() {
+  const input = document.getElementById("input")
+  const text = input.value
+  if (!text) return
+
+  addMessage(text, true)
+  input.value = ""
+
+  const res = await fetch("/chat", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      userId: "me",
+      message: text
+    })
+  })
+
+  const data = await res.json()
+  addMessage(data.reply, false)
+}
+
+// 回车发送
+document.getElementById("input").addEventListener("keydown", e => {
+  if (e.key === "Enter") send()
+})
+</script>
+
+</body>
+</html>
