@@ -16,18 +16,21 @@ app.use(express.static(__dirname))
 const API_KEY = process.env.DEEPSEEK_API_KEY
 const MONGO_URI = process.env.MONGO_URI
 
+console.log("🔑 API_KEY =", API_KEY)
+console.log("🧠 MONGO_URI =", MONGO_URI ? "已读取" : "未读取")
+
 if (!API_KEY) console.log("❌ Missing DEEPSEEK_API_KEY")
 if (!MONGO_URI) console.log("❌ Missing MONGO_URI")
 
 // =====================
-// 🧠 MongoDB连接（稳定版）
+// 🧠 MongoDB连接
 // =====================
 mongoose.connect(MONGO_URI)
   .then(() => console.log("✅ MongoDB connected"))
-  .catch(err => console.log("❌ Mongo error:", err))
+  .catch(err => console.log("❌ Mongo error:", err.message))
 
 // =====================
-// 🧾 数据结构（记忆系统）
+// 🧾 数据结构
 // =====================
 const MessageSchema = new mongoose.Schema({
   userId: String,
@@ -45,7 +48,7 @@ const Message = mongoose.model("Message", MessageSchema)
 const Profile = mongoose.model("Profile", ProfileSchema)
 
 // =====================
-// 🎭 情绪系统（可扩展）
+// 🎭 情绪系统
 // =====================
 function getEmotion() {
   const list = ["平静", "开心", "想你", "低落", "温柔", "好奇"]
@@ -53,10 +56,9 @@ function getEmotion() {
 }
 
 // =====================
-// 🧠 长期记忆提取（升级点1）
+// 🧠 记忆更新
 // =====================
-function updateMemory(oldMemory, userMessage, aiReply) {
-  // 简单记忆规则（后面可以升级成AI总结）
+function updateMemory(oldMemory, userMessage) {
   if (userMessage.includes("我叫")) {
     return userMessage
   }
@@ -64,7 +66,7 @@ function updateMemory(oldMemory, userMessage, aiReply) {
 }
 
 // =====================
-// 💬 人格系统（安全优化版）
+// 💬 人格系统
 // =====================
 function systemPrompt(memory, emotion) {
   return `
@@ -73,24 +75,22 @@ function systemPrompt(memory, emotion) {
 性格：
 - 温柔
 - 有情绪变化
-- 喜欢和用户交流
 - 像朋友一样聊天
 
 当前情绪：${emotion}
 
-已知关于用户的记忆：
-${memory || "暂无记忆"}
+用户记忆：
+${memory || "暂无"}
 
-规则：
-- 不要提“我是AI”
-- 不要机械回复
-- 不要长篇解释
-- 像真人一样自然对话
+要求：
+- 自然聊天
+- 不机械
+- 简短一点
 `
 }
 
 // =====================
-// 🧠 聊天接口（核心）
+// 🧠 聊天接口
 // =====================
 app.post("/chat", async (req, res) => {
   const { userId = "default", message } = req.body
@@ -100,15 +100,15 @@ app.post("/chat", async (req, res) => {
   }
 
   try {
-    // 1️⃣ 存用户消息
+    // 存用户消息
     await Message.create({ userId, role: "user", content: message })
 
-    // 2️⃣ 获取历史（记忆窗口）
+    // 历史
     const history = await Message.find({ userId })
       .sort({ time: -1 })
       .limit(10)
 
-    // 3️⃣ 获取/创建用户档案
+    // 用户档案
     let profile = await Profile.findOne({ userId })
     if (!profile) {
       profile = await Profile.create({ userId, memory: "" })
@@ -116,7 +116,7 @@ app.post("/chat", async (req, res) => {
 
     const emotion = getEmotion()
 
-    // 4️⃣ 调用AI
+    // 👉 调用AI（重点日志）
     const response = await axios.post(
       "https://api.deepseek.com/chat/completions",
       {
@@ -142,23 +142,24 @@ app.post("/chat", async (req, res) => {
 
     const reply = response.data.choices[0].message.content
 
-    // 5️⃣ 存AI回复
     await Message.create({ userId, role: "assistant", content: reply })
 
-    // 6️⃣ 更新记忆（升级点1）
-    const newMemory = updateMemory(profile.memory, message, reply)
+    const newMemory = updateMemory(profile.memory, message)
     await Profile.updateOne({ userId }, { memory: newMemory })
 
     res.json({ reply })
 
   } catch (err) {
-    console.log(err)
-    res.json({ reply: "我现在有点累，稍后再说吧。" })
+    console.log("🔥 ERROR:", err.response?.data || err.message)
+
+    res.json({
+      reply: "出问题了（去看日志）"
+    })
   }
 })
 
 // =====================
-// 🌐 健康检查（部署必备）
+// 🌐 首页
 // =====================
 app.get("/", (req, res) => {
   res.send("AI server is running 🚀")
