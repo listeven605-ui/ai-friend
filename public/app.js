@@ -20,8 +20,14 @@ async function send() {
 }
 
 function add(text, type) {
-  const div = document.createElement("div")
-  div.className = "msg " + type
-  div.innerText = text
-  document.getElementById("chat").appendChild(div)
+  const wrap = document.createElement("div")
+  wrap.className = "msg " + type
+
+  const bubble = document.createElement("div")
+  bubble.innerText = text
+
+  wrap.appendChild(bubble)
+  document.getElementById("chat").appendChild(wrap)
+
+  window.scrollTo(0, document.body.scrollHeight)
 }
