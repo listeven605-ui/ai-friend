@@ -1,6 +1,7 @@
-console.log("🚀 WECHAT AI V2 START")
+console.log("🌸 WECHAT UI FULL SYSTEM")
 
 require("dotenv").config()
+
 const express = require("express")
 const cors = require("cors")
 const mongoose = require("mongoose")
@@ -18,131 +19,174 @@ app.use(express.static("public"))
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY
 const MONGO_URI = process.env.MONGO_URI
 
+// =====================
+// DB
+// =====================
 mongoose.connect(MONGO_URI)
   .then(() => console.log("✅ DB OK"))
-  .catch(e => console.log("DB ERROR", e.message))
+  .catch(e => console.log("DB ERROR:", e.message))
 
-// =====================
-// CHAT SESSION（核心升级）
-// =====================
 const MessageSchema = new mongoose.Schema({
-  sessionId: String,   // 👈 多会话核心
+  userId: String,
   role: String,
   content: String,
   time: { type: Date, default: Date.now }
 })
 
-const SessionSchema = new mongoose.Schema({
-  sessionId: String,
-  title: String,
+const ProfileSchema = new mongoose.Schema({
+  userId: String,
   memory: String,
-  updatedAt: { type: Date, default: Date.now }
+  emotion: String
 })
 
 const Message = mongoose.model("Message", MessageSchema)
-const Session = mongoose.model("Session", SessionSchema)
+const Profile = mongoose.model("Profile", ProfileSchema)
 
 // =====================
-// AI
+// emotion
 // =====================
-function buildPrompt(session) {
+function nextEmotion(e = "平静") {
+  const map = {
+    平静: ["温柔", "开心"],
+    开心: ["想你", "温柔"],
+    想你: ["依赖", "低落"],
+    低落: ["平静", "温柔"],
+    温柔: ["开心", "想你"],
+    依赖: ["想你", "温柔"]
+  }
+  const list = map[e] || ["平静"]
+  return list[Math.floor(Math.random() * list.length)]
+}
+
+// =====================
+// memory
+// =====================
+function updateMemory(profile, msg) {
+  if (msg.includes("我叫")) profile.memory = msg
+  return profile
+}
+
+// =====================
+// prompt
+// =====================
+function systemPrompt(profile) {
   return `
-你叫若兰。
+你叫若兰，是一个真实女生。
 
-用户记忆：
-${session.memory || "暂无"}
+情绪：${profile.emotion}
+记忆：${profile.memory || "未知"}
 
-要求：
-- 像真人聊天
+风格：
 - 简短
+- 像真人
 - 有情绪
 `
 }
 
 // =====================
-// CHAT
+// chat
 // =====================
 app.post("/chat", async (req, res) => {
-  const { sessionId, message } = req.body
+  const { userId = "me", message } = req.body
 
-  if (!sessionId) return res.json({ reply: "no session" })
+  if (!message) return res.json({ reply: "嗯？" })
 
-  await Message.create({ sessionId, role: "user", content: message })
+  try {
+    await Message.create({ userId, role: "user", content: message })
 
-  let session = await Session.findOne({ sessionId })
-  if (!session) {
-    session = await Session.create({
-      sessionId,
-      title: "若兰",
-      memory: ""
-    })
-  }
-
-  // 🧠 简单记忆压缩（核心）
-  session.memory = (session.memory + " " + message).slice(-300)
-  session.updatedAt = new Date()
-
-  await Session.updateOne({ sessionId }, session)
-
-  const history = await Message.find({ sessionId })
-    .sort({ time: -1 })
-    .limit(12)
-
-  const response = await axios.post(
-    "https://openrouter.ai/api/v1/chat/completions",
-    {
-      model: "openai/gpt-4o-mini",
-      messages: [
-        { role: "system", content: buildPrompt(session) },
-        ...history.reverse().map(m => ({
-          role: m.role,
-          content: m.content
-        })),
-        { role: "user", content: message }
-      ]
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-        "Content-Type": "application/json"
-      }
+    let profile = await Profile.findOne({ userId })
+    if (!profile) {
+      profile = await Profile.create({
+        userId,
+        memory: "",
+        emotion: "平静"
+      })
     }
-  )
 
-  const reply =
-    response.data.choices?.[0]?.message?.content || "..."
+    profile = updateMemory(profile, message)
+    profile.emotion = nextEmotion(profile.emotion)
 
-  await Message.create({ sessionId, role: "assistant", content: reply })
+    await Profile.updateOne({ userId }, profile)
 
-  res.json({ reply })
+    const history = await Message.find({ userId })
+      .sort({ time: -1 })
+      .limit(10)
+
+    const response = await axios.post(
+      "https://openrouter.ai/api/v1/chat/completions",
+      {
+        model: "openai/gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content: systemPrompt(profile)
+          },
+          ...history.reverse().map(m => ({
+            role: m.role,
+            content: m.content
+          })),
+          {
+            role: "user",
+            content: message
+          }
+        ]
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+          "Content-Type": "application/json`
+        }
+      }
+    )
+
+    const reply =
+      response.data.choices?.[0]?.message?.content ||
+      "我有点走神了…"
+
+    await Message.create({ userId, role: "assistant", content: reply })
+
+    res.json({ reply })
+
+  } catch (e) {
+    console.log(e.response?.data || e.message)
+    res.json({ reply: "我有点乱…" })
+  }
 })
 
 // =====================
-// SESSION LIST（微信首页）
-// =====================
-app.get("/sessions", async (req, res) => {
-  const data = await Session.find().sort({ updatedAt: -1 })
-  res.json(data)
-})
-
-// =====================
-// HISTORY
+// history API
 // =====================
 app.get("/history", async (req, res) => {
-  const { sessionId } = req.query
-  const data = await Message.find({ sessionId }).sort({ time: 1 })
+  const { userId = "me" } = req.query
+
+  const data = await Message.find({ userId })
+    .sort({ time: 1 })
+
   res.json(data)
 })
 
-// =====================
-// SEARCH GLOBAL
-// =====================
-app.get("/search", async (req, res) => {
-  const { q } = req.query
+app.get("/history/search", async (req, res) => {
+  const { userId = "me", q = "" } = req.query
 
   const data = await Message.find({
+    userId,
     content: { $regex: q, $options: "i" }
   }).sort({ time: -1 })
+
+  res.json(data)
+})
+
+app.get("/history/date", async (req, res) => {
+  const { userId = "me", date } = req.query
+
+  const start = new Date(date)
+  const end = new Date(date)
+  end.setDate(end.getDate() + 1)
+
+  const data = await Message.find({
+    userId,
+    time: { $gte: start, $lt: end }
+  }).sort({ time: 1 })
 
   res.json(data)
 })

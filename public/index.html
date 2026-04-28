@@ -9,13 +9,27 @@
 
 <body>
 
-<div id="home">
-  <h2>微信AI</h2>
-  <input id="globalSearch" placeholder="全局搜索" oninput="globalSearch(this.value)">
-
-  <div id="sessionList"></div>
+<!-- 顶部栏 -->
+<div id="topbar">
+  <div class="avatar"></div>
+  <div class="title">若兰</div>
 </div>
 
-<script src="app.js"></script>
+<!-- 工具栏 -->
+<div id="tools">
+  <input id="searchBox" placeholder="搜索聊天" oninput="searchChat(this.value)">
+  <input type="date" onchange="loadByDate(this.value)">
+</div>
+
+<!-- 聊天 -->
+<div id="chat"></div>
+
+<!-- 输入 -->
+<div id="input">
+  <input id="msg" placeholder="说点什么...">
+  <button onclick="send()">发送</button>
+</div>
+
+<script src="add.js"></script>
 </body>
 </html>
