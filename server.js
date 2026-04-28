@@ -1,3 +1,4 @@
+console.log("🚀 VERSION: NEW CODE LOADED")
 require("dotenv").config()
 
 const express = require("express")
