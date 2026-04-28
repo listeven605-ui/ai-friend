@@ -1,4 +1,4 @@
-console.log("🌸 WECHAT UI FULL SYSTEM")
+console.log("🌸 FULL STABLE CHAT SYSTEM")
 
 require("dotenv").config()
 
@@ -14,13 +14,15 @@ app.use(express.json())
 app.use(express.static("public"))
 
 // =====================
-// ENV
+// 🔐 ENV
 // =====================
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY
 const MONGO_URI = process.env.MONGO_URI
 
+console.log("🔑 API =", OPENROUTER_API_KEY ? "OK" : "MISSING")
+
 // =====================
-// DB
+// 🧠 DB
 // =====================
 mongoose.connect(MONGO_URI)
   .then(() => console.log("✅ DB OK"))
@@ -43,7 +45,7 @@ const Message = mongoose.model("Message", MessageSchema)
 const Profile = mongoose.model("Profile", ProfileSchema)
 
 // =====================
-// emotion
+// 🎭 emotion
 // =====================
 function nextEmotion(e = "平静") {
   const map = {
@@ -59,32 +61,36 @@ function nextEmotion(e = "平静") {
 }
 
 // =====================
-// memory
+// 🧠 memory
 // =====================
 function updateMemory(profile, msg) {
-  if (msg.includes("我叫")) profile.memory = msg
+  if (msg.includes("我叫")) {
+    profile.memory = msg
+  }
   return profile
 }
 
 // =====================
-// prompt
+// 💬 prompt
 // =====================
 function systemPrompt(profile) {
   return `
-你叫若兰，是一个真实女生。
+你叫若兰，是一个真实、有情绪的女生。
 
-情绪：${profile.emotion}
-记忆：${profile.memory || "未知"}
+当前情绪：${profile.emotion}
+
+记忆：
+${profile.memory || "不了解用户"}
 
 风格：
 - 简短
-- 像真人
-- 有情绪
+- 自然
+- 像真人聊天
 `
 }
 
 // =====================
-// chat
+// 💬 chat
 // =====================
 app.post("/chat", async (req, res) => {
   const { userId = "me", message } = req.body
@@ -95,6 +101,7 @@ app.post("/chat", async (req, res) => {
     await Message.create({ userId, role: "user", content: message })
 
     let profile = await Profile.findOne({ userId })
+
     if (!profile) {
       profile = await Profile.create({
         userId,
@@ -110,7 +117,7 @@ app.post("/chat", async (req, res) => {
 
     const history = await Message.find({ userId })
       .sort({ time: -1 })
-      .limit(10)
+      .limit(8)
 
     const response = await axios.post(
       "https://openrouter.ai/api/v1/chat/completions",
@@ -134,7 +141,7 @@ app.post("/chat", async (req, res) => {
       {
         headers: {
           Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-          "Content-Type": "application/json`
+          "Content-Type": "application/json"
         }
       }
     )
@@ -148,47 +155,12 @@ app.post("/chat", async (req, res) => {
     res.json({ reply })
 
   } catch (e) {
-    console.log(e.response?.data || e.message)
+    console.log("ERROR:", e.response?.data || e.message)
     res.json({ reply: "我有点乱…" })
   }
 })
 
 // =====================
-// history API
+// 🚀 start
 // =====================
-app.get("/history", async (req, res) => {
-  const { userId = "me" } = req.query
-
-  const data = await Message.find({ userId })
-    .sort({ time: 1 })
-
-  res.json(data)
-})
-
-app.get("/history/search", async (req, res) => {
-  const { userId = "me", q = "" } = req.query
-
-  const data = await Message.find({
-    userId,
-    content: { $regex: q, $options: "i" }
-  }).sort({ time: -1 })
-
-  res.json(data)
-})
-
-app.get("/history/date", async (req, res) => {
-  const { userId = "me", date } = req.query
-
-  const start = new Date(date)
-  const end = new Date(date)
-  end.setDate(end.getDate() + 1)
-
-  const data = await Message.find({
-    userId,
-    time: { $gte: start, $lt: end }
-  }).sort({ time: 1 })
-
-  res.json(data)
-})
-
 app.listen(3000, () => console.log("RUN 3000"))
