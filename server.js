@@ -1,11 +1,11 @@
-console.log("🌸 FINAL HUMAN-LIKE VERSION")
+console.log("🌸 FINAL OPENROUTER VERSION")
 
 require("dotenv").config()
 
 const express = require("express")
 const cors = require("cors")
 const mongoose = require("mongoose")
-const { GoogleGenerativeAI } = require("@google/generative-ai")
+const axios = require("axios")
 
 const app = express()
 app.use(cors())
@@ -15,18 +15,10 @@ app.use(express.static(__dirname))
 // =====================
 // 🔐 环境变量
 // =====================
-const API_KEY = process.env.GEMINI_API_KEY
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY
 const MONGO_URI = process.env.MONGO_URI
 
-console.log("🔑 GEMINI KEY =", API_KEY ? "已读取" : "未读取")
-
-// =====================
-// 🤖 Gemini
-// =====================
-const genAI = new GoogleGenerativeAI(API_KEY)
-const model = genAI.getGenerativeModel({
-  model: "gemini-1.5-flash"
-})
+console.log("🔑 OPENROUTER KEY =", OPENROUTER_API_KEY ? "已读取" : "未读取")
 
 // =====================
 // 🧠 MongoDB
@@ -36,7 +28,7 @@ mongoose.connect(MONGO_URI)
   .catch(err => console.log("❌ Mongo error:", err.message))
 
 // =====================
-// 🧾 数据
+// 🧾 数据结构
 // =====================
 const MessageSchema = new mongoose.Schema({
   userId: String,
@@ -55,19 +47,19 @@ const Message = mongoose.model("Message", MessageSchema)
 const Profile = mongoose.model("Profile", ProfileSchema)
 
 // =====================
-// 🎭 情绪系统（连续）
+// 🎭 情绪系统
 // =====================
 function nextEmotion(old) {
   const map = {
     平静: ["温柔", "开心"],
     开心: ["想你", "温柔"],
     想你: ["依赖", "低落"],
-    低落: ["需要你", "平静"],
+    低落: ["平静", "温柔"],
     温柔: ["开心", "想你"],
     依赖: ["想你", "温柔"]
   }
-  const next = map[old] || ["平静"]
-  return next[Math.floor(Math.random() * next.length)]
+  const list = map[old] || ["平静"]
+  return list[Math.floor(Math.random() * list.length)]
 }
 
 // =====================
@@ -80,33 +72,33 @@ function updateMemory(oldMemory, msg) {
 }
 
 // =====================
-// 💬 人格（更真实）
+// 💬 人格系统（若兰）
 // =====================
 function systemPrompt(memory, emotion) {
   return `
 你叫“若兰”，是一个真实感很强的女生。
 
-特点：
-- 会犹豫
-- 会有点依赖用户
-- 有情绪变化（不是一直开心）
-- 回复自然，不完美
+性格：
+- 温柔
+- 有情绪变化
+- 有一点依赖用户
+- 像真实人一样聊天
 
 当前情绪：${emotion}
 
-关于用户：
+关于用户记忆：
 ${memory || "还不太了解他"}
 
 聊天规则：
-- 像真人
-- 可以有停顿（比如“嗯…”）
-- 不要解释
-- 回复尽量短（1~2句话）
+- 简短自然（1~2句）
+- 可以有停顿感（比如“嗯…”）
+- 不要解释自己
+- 不要像机器人
 `
 }
 
 // =====================
-// 🧠 聊天接口
+// 🧠 聊天接口（OpenRouter版）
 // =====================
 app.post("/chat", async (req, res) => {
   const { userId = "default", message } = req.body
@@ -147,33 +139,44 @@ ${history.reverse().map(m => m.content).join("\n")}
 若兰：
 `
 
-    const result = await model.generateContent(fullPrompt)
-
-    let reply = ""
-
-    try {
-      if (result.response?.text) {
-        reply = result.response.text()
+    // =====================
+    // 🤖 OpenRouter 调用
+    // =====================
+    const response = await axios.post(
+      "https://openrouter.ai/api/v1/chat/completions",
+      {
+        model: "openai/gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content: systemPrompt(memory, emotion)
+          },
+          {
+            role: "user",
+            content: fullPrompt
+          }
+        ]
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "http://localhost",
+          "X-Title": "RuoLan AI"
+        }
       }
+    )
 
-      if (!reply && result.response?.candidates?.length > 0) {
-        reply =
-          result.response.candidates[0]?.content?.parts?.[0]?.text || ""
-      }
-    } catch (e) {
-      console.log("解析异常:", e)
-    }
-
-    if (!reply || reply.trim() === "") {
-      reply = "嗯…我刚刚在想你说的话。"
-    }
+    let reply =
+      response.data?.choices?.[0]?.message?.content ||
+      "嗯…我刚刚在想你说的话。"
 
     await Message.create({ userId, role: "assistant", content: reply })
 
     res.json({ reply })
 
   } catch (err) {
-    console.log("🔥 ERROR:", err)
+    console.log("🔥 ERROR:", err.response?.data || err.message)
     res.json({ reply: "我有点乱…等一下好吗。" })
   }
 })
