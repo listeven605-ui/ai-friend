@@ -25,7 +25,7 @@ console.log("🔑 GEMINI KEY =", API_KEY ? "已读取" : "未读取")
 // =====================
 const genAI = new GoogleGenerativeAI(API_KEY)
 const model = genAI.getGenerativeModel({
-  model: "gemini-1.5-pro-latest"
+  model: "gemini-1.5-flash-latest"
 })
 
 // =====================
