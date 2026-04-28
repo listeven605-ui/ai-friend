@@ -1,10 +1,11 @@
-console.log("🚀 VERSION: NEW CODE LOADED")
+console.log("🚀 VERSION: GEMINI SDK FINAL")
+
 require("dotenv").config()
 
 const express = require("express")
-const axios = require("axios")
 const cors = require("cors")
 const mongoose = require("mongoose")
+const { GoogleGenerativeAI } = require("@google/generative-ai")
 
 const app = express()
 app.use(cors())
@@ -18,6 +19,14 @@ const API_KEY = process.env.GEMINI_API_KEY
 const MONGO_URI = process.env.MONGO_URI
 
 console.log("🔑 GEMINI KEY =", API_KEY ? "已读取" : "未读取")
+
+// =====================
+// 🤖 初始化 Gemini（关键）
+// =====================
+const genAI = new GoogleGenerativeAI(API_KEY)
+const model = genAI.getGenerativeModel({
+  model: "gemini-1.5-flash"
+})
 
 // =====================
 // 🧠 MongoDB连接
@@ -76,7 +85,7 @@ ${memory || "暂无"}
 }
 
 // =====================
-// 🧠 聊天接口
+// 🧠 聊天接口（最终稳定版）
 // =====================
 app.post("/chat", async (req, res) => {
   const { userId = "default", message } = req.body
@@ -101,7 +110,7 @@ app.post("/chat", async (req, res) => {
 
     const emotion = getEmotion()
 
-    // 👉 拼对话
+    // 拼 Prompt
     const fullPrompt = `
 ${systemPrompt(profile.memory, emotion)}
 
@@ -112,28 +121,19 @@ ${history.reverse().map(m => m.content).join("\n")}
 AI：
 `
 
-    // 👉 调用 Gemini
-    const response = await axios.post(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent`,
-      {
-        contents: [
-          {
-            parts: [{ text: fullPrompt }]
-          }
-        ]
-      }
-    )
+    // =====================
+    // 🤖 Gemini SDK 调用（核心）
+    // =====================
+    const result = await model.generateContent(fullPrompt)
+    const reply = result.response.text() || "我有点走神了..."
 
-    const reply =
-      response.data.candidates?.[0]?.content?.parts?.[0]?.text ||
-      "我有点走神了..."
-
+    // 存AI回复
     await Message.create({ userId, role: "assistant", content: reply })
 
     res.json({ reply })
 
   } catch (err) {
-    console.log("🔥 ERROR:", err.response?.data || err.message)
+    console.log("🔥 ERROR:", err)
     res.json({ reply: "出问题了（看日志）" })
   }
 })
