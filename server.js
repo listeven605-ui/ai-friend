@@ -13,14 +13,10 @@ app.use(express.static(__dirname))
 // =====================
 // 🔐 环境变量
 // =====================
-const API_KEY = process.env.DEEPSEEK_API_KEY
+const API_KEY = process.env.GEMINI_API_KEY
 const MONGO_URI = process.env.MONGO_URI
 
-console.log("🔑 API_KEY =", API_KEY)
-console.log("🧠 MONGO_URI =", MONGO_URI ? "已读取" : "未读取")
-
-if (!API_KEY) console.log("❌ Missing DEEPSEEK_API_KEY")
-if (!MONGO_URI) console.log("❌ Missing MONGO_URI")
+console.log("🔑 GEMINI KEY =", API_KEY ? "已读取" : "未读取")
 
 // =====================
 // 🧠 MongoDB连接
@@ -56,21 +52,11 @@ function getEmotion() {
 }
 
 // =====================
-// 🧠 记忆更新
-// =====================
-function updateMemory(oldMemory, userMessage) {
-  if (userMessage.includes("我叫")) {
-    return userMessage
-  }
-  return oldMemory
-}
-
-// =====================
 // 💬 人格系统
 // =====================
 function systemPrompt(memory, emotion) {
   return `
-你叫“若兰”，是一个自然、真实感很强的AI助手。
+你叫“若兰”，是一个自然、真实感很强的女生。
 
 性格：
 - 温柔
@@ -79,12 +65,11 @@ function systemPrompt(memory, emotion) {
 
 当前情绪：${emotion}
 
-用户记忆：
+关于用户的记忆：
 ${memory || "暂无"}
 
 要求：
 - 自然聊天
-- 不机械
 - 简短一点
 `
 }
@@ -108,7 +93,6 @@ app.post("/chat", async (req, res) => {
       .sort({ time: -1 })
       .limit(10)
 
-    // 用户档案
     let profile = await Profile.findOne({ userId })
     if (!profile) {
       profile = await Profile.create({ userId, memory: "" })
@@ -116,45 +100,40 @@ app.post("/chat", async (req, res) => {
 
     const emotion = getEmotion()
 
-    // 👉 调用AI（重点日志）
+    // 👉 拼对话
+    const fullPrompt = `
+${systemPrompt(profile.memory, emotion)}
+
+对话历史：
+${history.reverse().map(m => m.content).join("\n")}
+
+用户：${message}
+AI：
+`
+
+    // 👉 调用 Gemini
     const response = await axios.post(
-      "https://api.deepseek.com/chat/completions",
+      `https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key=${API_KEY}`,
       {
-        model: "deepseek-chat",
-        messages: [
+        contents: [
           {
-            role: "system",
-            content: systemPrompt(profile.memory, emotion)
-          },
-          ...history.reverse().map(m => ({
-            role: m.role,
-            content: m.content
-          }))
+            parts: [{ text: fullPrompt }]
+          }
         ]
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${API_KEY}`,
-          "Content-Type": "application/json"
-        }
       }
     )
 
-    const reply = response.data.choices[0].message.content
+    const reply =
+      response.data.candidates?.[0]?.content?.parts?.[0]?.text ||
+      "我有点走神了..."
 
     await Message.create({ userId, role: "assistant", content: reply })
-
-    const newMemory = updateMemory(profile.memory, message)
-    await Profile.updateOne({ userId }, { memory: newMemory })
 
     res.json({ reply })
 
   } catch (err) {
     console.log("🔥 ERROR:", err.response?.data || err.message)
-
-    res.json({
-      reply: "出问题了（去看日志）"
-    })
+    res.json({ reply: "出问题了（看日志）" })
   }
 })
 
