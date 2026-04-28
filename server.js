@@ -1,4 +1,4 @@
-console.log("🚀 VERSION: GEMINI SDK FINAL")
+console.log("🌸 FINAL HUMAN-LIKE VERSION")
 
 require("dotenv").config()
 
@@ -21,7 +21,7 @@ const MONGO_URI = process.env.MONGO_URI
 console.log("🔑 GEMINI KEY =", API_KEY ? "已读取" : "未读取")
 
 // =====================
-// 🤖 初始化 Gemini（关键）
+// 🤖 Gemini
 // =====================
 const genAI = new GoogleGenerativeAI(API_KEY)
 const model = genAI.getGenerativeModel({
@@ -29,14 +29,14 @@ const model = genAI.getGenerativeModel({
 })
 
 // =====================
-// 🧠 MongoDB连接
+// 🧠 MongoDB
 // =====================
 mongoose.connect(MONGO_URI)
   .then(() => console.log("✅ MongoDB connected"))
   .catch(err => console.log("❌ Mongo error:", err.message))
 
 // =====================
-// 🧾 数据结构
+// 🧾 数据
 // =====================
 const MessageSchema = new mongoose.Schema({
   userId: String,
@@ -47,45 +47,66 @@ const MessageSchema = new mongoose.Schema({
 
 const ProfileSchema = new mongoose.Schema({
   userId: String,
-  memory: String
+  memory: String,
+  emotion: String
 })
 
 const Message = mongoose.model("Message", MessageSchema)
 const Profile = mongoose.model("Profile", ProfileSchema)
 
 // =====================
-// 🎭 情绪系统
+// 🎭 情绪系统（连续）
 // =====================
-function getEmotion() {
-  const list = ["平静", "开心", "想你", "低落", "温柔", "好奇"]
-  return list[Math.floor(Math.random() * list.length)]
+function nextEmotion(old) {
+  const map = {
+    平静: ["温柔", "开心"],
+    开心: ["想你", "温柔"],
+    想你: ["依赖", "低落"],
+    低落: ["需要你", "平静"],
+    温柔: ["开心", "想你"],
+    依赖: ["想你", "温柔"]
+  }
+  const next = map[old] || ["平静"]
+  return next[Math.floor(Math.random() * next.length)]
 }
 
 // =====================
-// 💬 人格系统
+// 🧠 记忆更新
+// =====================
+function updateMemory(oldMemory, msg) {
+  if (msg.includes("我叫")) return msg
+  if (msg.includes("喜欢")) return msg
+  return oldMemory
+}
+
+// =====================
+// 💬 人格（更真实）
 // =====================
 function systemPrompt(memory, emotion) {
   return `
-你叫“若兰”，是一个自然、真实感很强的女生。
+你叫“若兰”，是一个真实感很强的女生。
 
-性格：
-- 温柔
-- 有情绪变化
-- 像朋友一样聊天
+特点：
+- 会犹豫
+- 会有点依赖用户
+- 有情绪变化（不是一直开心）
+- 回复自然，不完美
 
 当前情绪：${emotion}
 
-关于用户的记忆：
-${memory || "暂无"}
+关于用户：
+${memory || "还不太了解他"}
 
-要求：
-- 自然聊天
-- 简短一点
+聊天规则：
+- 像真人
+- 可以有停顿（比如“嗯…”）
+- 不要解释
+- 回复尽量短（1~2句话）
 `
 }
 
 // =====================
-// 🧠 聊天接口（最终稳定版）
+// 🧠 聊天接口
 // =====================
 app.post("/chat", async (req, res) => {
   const { userId = "default", message } = req.body
@@ -95,46 +116,65 @@ app.post("/chat", async (req, res) => {
   }
 
   try {
-    // 存用户消息
     await Message.create({ userId, role: "user", content: message })
 
-    // 历史
     const history = await Message.find({ userId })
       .sort({ time: -1 })
-      .limit(10)
+      .limit(8)
 
     let profile = await Profile.findOne({ userId })
     if (!profile) {
-      profile = await Profile.create({ userId, memory: "" })
+      profile = await Profile.create({
+        userId,
+        memory: "",
+        emotion: "平静"
+      })
     }
 
-    const emotion = getEmotion()
+    // 更新情绪 + 记忆
+    const emotion = nextEmotion(profile.emotion)
+    const memory = updateMemory(profile.memory, message)
 
-    // 拼 Prompt
+    await Profile.updateOne({ userId }, { emotion, memory })
+
     const fullPrompt = `
-${systemPrompt(profile.memory, emotion)}
+${systemPrompt(memory, emotion)}
 
-对话历史：
+对话：
 ${history.reverse().map(m => m.content).join("\n")}
 
 用户：${message}
-AI：
+若兰：
 `
 
-    // =====================
-    // 🤖 Gemini SDK 调用（核心）
-    // =====================
     const result = await model.generateContent(fullPrompt)
-    const reply = result.response.text() || "我有点走神了..."
 
-    // 存AI回复
+    let reply = ""
+
+    try {
+      if (result.response?.text) {
+        reply = result.response.text()
+      }
+
+      if (!reply && result.response?.candidates?.length > 0) {
+        reply =
+          result.response.candidates[0]?.content?.parts?.[0]?.text || ""
+      }
+    } catch (e) {
+      console.log("解析异常:", e)
+    }
+
+    if (!reply || reply.trim() === "") {
+      reply = "嗯…我刚刚在想你说的话。"
+    }
+
     await Message.create({ userId, role: "assistant", content: reply })
 
     res.json({ reply })
 
   } catch (err) {
     console.log("🔥 ERROR:", err)
-    res.json({ reply: "出问题了（看日志）" })
+    res.json({ reply: "我有点乱…等一下好吗。" })
   }
 })
 
@@ -142,7 +182,7 @@ AI：
 // 🌐 首页
 // =====================
 app.get("/", (req, res) => {
-  res.send("AI server is running 🚀")
+  res.send("AI running 🌸")
 })
 
 // =====================
@@ -150,5 +190,5 @@ app.get("/", (req, res) => {
 // =====================
 const PORT = process.env.PORT || 3000
 app.listen(PORT, () => {
-  console.log("🚀 AI running on port:", PORT)
+  console.log("🚀 running:", PORT)
 })
