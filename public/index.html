@@ -2,29 +2,20 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>若兰</title>
 <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
 
-<!-- 顶部栏 -->
-<div id="topbar">
-  <div class="avatar"></div>
-  <div class="title">若兰</div>
-</div>
+<div id="home">
+  <h2>微信AI</h2>
+  <input id="globalSearch" placeholder="全局搜索" oninput="globalSearch(this.value)">
 
-<!-- 聊天 -->
-<div id="chat"></div>
-
-<!-- 输入 -->
-<div id="input">
-  <input id="msg" placeholder="说点什么..." />
-  <button onclick="send()">发送</button>
+  <div id="sessionList"></div>
 </div>
 
 <script src="app.js"></script>
-
 </body>
 </html>

@@ -1,162 +1,150 @@
-console.log("🌸 FULL UPGRADED SYSTEM START")
+console.log("🚀 WECHAT AI V2 START")
 
 require("dotenv").config()
-
 const express = require("express")
 const cors = require("cors")
 const mongoose = require("mongoose")
 const axios = require("axios")
 
 const app = express()
+
 app.use(cors())
 app.use(express.json())
 app.use(express.static("public"))
 
 // =====================
-// 🔐 ENV
+// ENV
 // =====================
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY
 const MONGO_URI = process.env.MONGO_URI
 
-console.log("🔑 KEY =", OPENROUTER_API_KEY ? "OK" : "MISSING")
-
-// =====================
-// 🧠 DB
-// =====================
 mongoose.connect(MONGO_URI)
   .then(() => console.log("✅ DB OK"))
-  .catch(e => console.log("DB ERROR:", e.message))
+  .catch(e => console.log("DB ERROR", e.message))
 
+// =====================
+// CHAT SESSION（核心升级）
+// =====================
 const MessageSchema = new mongoose.Schema({
-  userId: String,
+  sessionId: String,   // 👈 多会话核心
   role: String,
   content: String,
   time: { type: Date, default: Date.now }
 })
 
-const ProfileSchema = new mongoose.Schema({
-  userId: String,
+const SessionSchema = new mongoose.Schema({
+  sessionId: String,
+  title: String,
   memory: String,
-  emotion: String,
-  name: String
+  updatedAt: { type: Date, default: Date.now }
 })
 
 const Message = mongoose.model("Message", MessageSchema)
-const Profile = mongoose.model("Profile", ProfileSchema)
+const Session = mongoose.model("Session", SessionSchema)
 
 // =====================
-// 🎭 emotion engine
+// AI
 // =====================
-function nextEmotion(e) {
-  const map = {
-    平静: ["温柔", "开心"],
-    开心: ["想你", "温柔"],
-    想你: ["依赖", "低落"],
-    低落: ["平静", "温柔"],
-    温柔: ["开心", "想你"],
-    依赖: ["想你", "温柔"]
-  }
-  return (map[e] || ["平静"])[Math.floor(Math.random() * 2)]
-}
-
-// =====================
-// 🧠 memory
-// =====================
-function updateMemory(profile, msg) {
-  if (msg.includes("我叫")) {
-    profile.name = msg.replace("我叫", "")
-  }
-  profile.memory = msg
-  return profile
-}
-
-// =====================
-// 💬 prompt
-// =====================
-function systemPrompt(p) {
+function buildPrompt(session) {
   return `
-你叫若兰，是一个真实女生。
+你叫若兰。
 
-你有情绪，会变化：
-当前情绪：${p.emotion}
+用户记忆：
+${session.memory || "暂无"}
 
-你记得用户：
-${p.memory || "不太了解"}
-
-聊天方式：
+要求：
+- 像真人聊天
 - 简短
-- 自然
-- 像真人
-- 可以有停顿
+- 有情绪
 `
 }
 
 // =====================
-// 💬 chat
+// CHAT
 // =====================
 app.post("/chat", async (req, res) => {
-  const { userId = "me", message } = req.body
+  const { sessionId, message } = req.body
 
-  if (!message) return res.json({ reply: "嗯？" })
+  if (!sessionId) return res.json({ reply: "no session" })
 
-  try {
-    await Message.create({ userId, role: "user", content: message })
+  await Message.create({ sessionId, role: "user", content: message })
 
-    let profile = await Profile.findOne({ userId })
-    if (!profile) {
-      profile = await Profile.create({
-        userId,
-        memory: "",
-        emotion: "平静",
-        name: ""
-      })
-    }
-
-    profile = updateMemory(profile, message)
-    profile.emotion = nextEmotion(profile.emotion)
-
-    await Profile.updateOne({ userId }, profile)
-
-    const history = await Message.find({ userId })
-      .sort({ time: -1 })
-      .limit(6)
-
-    const prompt = `
-${systemPrompt(profile)}
-
-对话：
-${history.reverse().map(m => m.content).join("\n")}
-用户：${message}
-若兰：
-`
-
-    const response = await axios.post(
-      "https://openrouter.ai/api/v1/chat/completions",
-      {
-        model: "openai/gpt-4o-mini",
-        messages: [
-          { role: "user", content: prompt }
-        ]
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${OPENROUTER_API_KEY}`
-        }
-      }
-    )
-
-    const reply =
-      response.data.choices?.[0]?.message?.content ||
-      "我刚刚走神了…"
-
-    await Message.create({ userId, role: "assistant", content: reply })
-
-    res.json({ reply })
-
-  } catch (e) {
-    console.log(e.response?.data || e.message)
-    res.json({ reply: "我有点乱…" })
+  let session = await Session.findOne({ sessionId })
+  if (!session) {
+    session = await Session.create({
+      sessionId,
+      title: "若兰",
+      memory: ""
+    })
   }
+
+  // 🧠 简单记忆压缩（核心）
+  session.memory = (session.memory + " " + message).slice(-300)
+  session.updatedAt = new Date()
+
+  await Session.updateOne({ sessionId }, session)
+
+  const history = await Message.find({ sessionId })
+    .sort({ time: -1 })
+    .limit(12)
+
+  const response = await axios.post(
+    "https://openrouter.ai/api/v1/chat/completions",
+    {
+      model: "openai/gpt-4o-mini",
+      messages: [
+        { role: "system", content: buildPrompt(session) },
+        ...history.reverse().map(m => ({
+          role: m.role,
+          content: m.content
+        })),
+        { role: "user", content: message }
+      ]
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+        "Content-Type": "application/json"
+      }
+    }
+  )
+
+  const reply =
+    response.data.choices?.[0]?.message?.content || "..."
+
+  await Message.create({ sessionId, role: "assistant", content: reply })
+
+  res.json({ reply })
+})
+
+// =====================
+// SESSION LIST（微信首页）
+// =====================
+app.get("/sessions", async (req, res) => {
+  const data = await Session.find().sort({ updatedAt: -1 })
+  res.json(data)
+})
+
+// =====================
+// HISTORY
+// =====================
+app.get("/history", async (req, res) => {
+  const { sessionId } = req.query
+  const data = await Message.find({ sessionId }).sort({ time: 1 })
+  res.json(data)
+})
+
+// =====================
+// SEARCH GLOBAL
+// =====================
+app.get("/search", async (req, res) => {
+  const { q } = req.query
+
+  const data = await Message.find({
+    content: { $regex: q, $options: "i" }
+  }).sort({ time: -1 })
+
+  res.json(data)
 })
 
 app.listen(3000, () => console.log("RUN 3000"))

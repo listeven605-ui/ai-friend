@@ -1,33 +1,30 @@
-async function send() {
-  const input = document.getElementById("msg")
-  const text = input.value
-  if (!text) return
-
-  add(text, "me")
-  input.value = ""
-
-  const res = await fetch("/chat", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      userId: "me",
-      message: text
-    })
-  })
-
+async function loadSessions() {
+  const res = await fetch("/sessions")
   const data = await res.json()
-  add(data.reply, "ai")
+
+  const list = document.getElementById("sessionList")
+  list.innerHTML = ""
+
+  data.forEach(s => {
+    const div = document.createElement("div")
+    div.className = "session"
+    div.innerText = s.title
+
+    div.onclick = () => {
+      location.href = `/chat.html?id=${s.sessionId}`
+    }
+
+    list.appendChild(div)
+  })
 }
 
-function add(text, type) {
-  const wrap = document.createElement("div")
-  wrap.className = "msg " + type
+async function globalSearch(q) {
+  if (!q) return loadSessions()
 
-  const bubble = document.createElement("div")
-  bubble.innerText = text
+  const res = await fetch(`/search?q=${q}`)
+  const data = await res.json()
 
-  wrap.appendChild(bubble)
-  document.getElementById("chat").appendChild(wrap)
-
-  window.scrollTo(0, document.body.scrollHeight)
+  console.log(data)
 }
+
+loadSessions()
